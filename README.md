@@ -1,7 +1,3 @@
-Berikut README.md yang rapi dan profesional untuk proyek **Project Scheduler** kamu — sudah lengkap dari setup environment, cara run, hingga catatan untuk Graphviz dan Streamlit:
-
----
-
 # Project Scheduler App
 
 **Project Scheduler App** adalah aplikasi berbasis **Streamlit** yang digunakan untuk menghitung dan memvisualisasikan **Critical Path Method (CPM)** dari suatu proyek.
