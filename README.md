@@ -34,6 +34,7 @@ Aplikasi ini dapat menampilkan hasil dalam bentuk **tabel CPM**, **diagram PERT*
 ```bash
 git clone https://github.com/MQAFSI23/project-scheduler-app.git
 cd project-scheduler-app
+```
 
 ### 2. Buat Virtual Environment
 
@@ -122,7 +123,7 @@ Aplikasi ini menerima file CSV dengan **3 kolom wajib** dalam urutan berikut:
 | F        | 5               | D, E         |
 | G        | 4               | F            |
 
-> Kolom **Dependencies** menggunakan pemisah koma (`,`).
+> Kolom **Dependencies** menggunakan pemisah koma `(,)`.
 > Biarkan kosong jika aktivitas tidak memiliki dependensi.
 
 ---
