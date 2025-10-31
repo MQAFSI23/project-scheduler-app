@@ -32,9 +32,8 @@ Aplikasi ini dapat menampilkan hasil dalam bentuk **tabel CPM**, **diagram PERT*
 ### 1. Clone Repository
 
 ```bash
-git clone https://github.com/<username>/project-scheduler.git
-cd project-scheduler
-```
+git clone https://github.com/MQAFSI23/project-scheduler-app.git
+cd project-scheduler-app
 
 ### 2. Buat Virtual Environment
 
@@ -59,15 +58,6 @@ python -m venv venv
 
 ```bash
 pip install -r requirements.txt
-```
-
-Jika kamu belum membuat file `requirements.txt`, berikut isinya:
-
-```text
-streamlit
-pandas
-plotly
-graphviz
 ```
 
 ---
@@ -108,12 +98,6 @@ Setelah semua dependensi terinstal, jalankan aplikasi Streamlit dengan perintah 
 
 ```bash
 streamlit run app.py
-```
-
-Atau jika nama file kamu berbeda, sesuaikan:
-
-```bash
-streamlit run project_scheduler.py
 ```
 
 Kemudian buka browser dan akses:
