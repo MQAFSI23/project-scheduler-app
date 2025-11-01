@@ -24,99 +24,127 @@ if 'tasks_df' not in st.session_state:
     }
     st.session_state.tasks_df = pd.DataFrame(sample_data)
 
-
 def calculate_cpm(df, start_date):
-    """Compute Critical Path Method (ES, EF, LS, LF, Slack) and generate data for the PERT and Gantt charts."""
-
+    """Compute CPM using explicit topological sort (Kahn). Returns:
+        (df_display, critical_path, df_with_datetimes)
+    """
     # Ensure numeric duration
+    df = df.copy()
     df['Duration (Days)'] = pd.to_numeric(df['Duration (Days)'], errors='coerce').fillna(0).astype(int)
 
-    # Split dependencies into lists
-    df['Dependencies'] = df['Dependencies'].apply(lambda x: x.split(', ') if pd.notna(x) and x.strip() != '' else [])
+    # Normalize Activity names (strip) and Dependencies into lists (strip each)
+    df['Activity'] = df['Activity'].astype(str).str.strip()
+    def parse_deps(x):
+        if pd.isna(x) or str(x).strip() == '':
+            return []
+        # split by comma and strip each token, ignore empties
+        parts = [p.strip() for p in str(x).split(',')]
+        return [p for p in parts if p != '']
+    df['Dependencies'] = df['Dependencies'].apply(parse_deps)
 
-    # Initialize columns
-    df['ES'] = pd.NaT
-    df['EF'] = pd.NaT
-    df['LS'] = pd.NaT
-    df['LF'] = pd.NaT
-
-    start_datetime = datetime.combine(start_date, datetime.min.time())
-    ef_map = {}
-
-    # Forward Pass (ES & EF)
-    for _ in range(len(df)):
-        for idx, row in df.iterrows():
-            deps = row['Dependencies']
-
-            if not deps:
-                es = start_datetime
-            else:
-                max_dep_ef = pd.NaT
-                all_done = True
-                for dep in deps:
-                    dep = dep.strip()
-                    if dep not in ef_map:
-                        all_done = False
-                        break
-                    if pd.isna(max_dep_ef) or ef_map[dep] > max_dep_ef:
-                        max_dep_ef = ef_map[dep]
-                es = (max_dep_ef + pd.Timedelta(days=1)) if all_done else pd.NaT
-
-            if pd.notna(es):
-                ef = es + pd.Timedelta(days=int(row['Duration (Days)']) - 1) # inclusive
-                df.at[idx, 'ES'] = es
-                df.at[idx, 'EF'] = ef
-                ef_map[row['Activity']] = ef
-
-    if df['ES'].isna().any():
-        st.error("Calculation failed. Please check for circular or invalid dependencies.")
+    # Basic validation: unique activity names
+    if df['Activity'].duplicated().any():
+        dupes = df.loc[df['Activity'].duplicated(keep=False), 'Activity'].unique().tolist()
+        st.error(f"Duplicate Activity IDs found: {', '.join(map(str, dupes))}. Activity names must be unique.")
         return None, None, None
 
-    # Backward Pass (LS & LF)
-    project_finish = df['EF'].max()
-    df['LF'] = project_finish
+    activities = df['Activity'].tolist()
+    # Validate dependencies refer to existing activities
+    all_deps = set(sum(df['Dependencies'].tolist(), []))
+    bad_refs = [d for d in all_deps if d not in activities]
+    if bad_refs:
+        st.error(f"Dependencies reference unknown activity IDs: {', '.join(bad_refs)}.")
+        return None, None, None
 
-    successors_map = {task: [] for task in df['Activity']}
+    # Build adjacency / in-degree for Kahn's algorithm
+    successors = {a: [] for a in activities}
+    indegree = {a: 0 for a in activities}
     for _, row in df.iterrows():
+        a = row['Activity']
         for dep in row['Dependencies']:
-            dep = dep.strip()
-            if dep in successors_map:
-                successors_map[dep].append(row['Activity'])
+            successors[dep].append(a)
+            indegree[a] += 1
 
-    for idx in reversed(df.index):
-        activity = df.at[idx, 'Activity']
-        successors = successors_map[activity]
-        if not successors:
+    # Kahn's topological sort
+    queue = [n for n in activities if indegree[n] == 0]
+    topo = []
+    while queue:
+        n = queue.pop(0)
+        topo.append(n)
+        for succ in successors[n]:
+            indegree[succ] -= 1
+            if indegree[succ] == 0:
+                queue.append(succ)
+
+    if len(topo) != len(activities):
+        st.error("Cycle detected in dependencies (circular dependency). Please fix task dependencies.")
+        return None, None, None
+
+    # Prepare maps for quick lookup
+    row_by_activity = {row['Activity']: row for _, row in df.iterrows()}
+    # datetimes
+    start_datetime = datetime.combine(start_date, datetime.min.time())
+
+    ES_map = {}
+    EF_map = {}
+
+    # Forward pass using topo order
+    for a in topo:
+        row = row_by_activity[a]
+        duration = int(row['Duration (Days)'])
+        deps = row['Dependencies']
+
+        if not deps:
+            es = start_datetime
+        else:
+            # successor ES = max(EF of predecessors) + 1 day (because inclusive EF)
+            max_ef = max(EF_map[dep] for dep in deps)
+            es = max_ef + pd.Timedelta(days=1)
+
+        ef = es + pd.Timedelta(days=duration - 1) if duration > 0 else es  # inclusive convention
+        ES_map[a] = es
+        EF_map[a] = ef
+
+    # Project finish
+    project_finish = max(EF_map.values())
+
+    # Backward pass using reverse topo
+    LF_map = {}
+    LS_map = {}
+
+    for a in reversed(topo):
+        row = row_by_activity[a]
+        duration = int(row['Duration (Days)'])
+        succs = successors[a]
+        if not succs:
             lf = project_finish
         else:
-            min_succ_ls = pd.NaT
-            for succ in successors:
-                succ_ls = df.loc[df['Activity'] == succ, 'LS'].values[0]
-                if pd.isna(min_succ_ls) or succ_ls < min_succ_ls:
-                    min_succ_ls = succ_ls
+            # LF = min(LS of successors) - 1 day
+            min_succ_ls = min(LS_map[s] for s in succs)
+            lf = min_succ_ls - pd.Timedelta(days=1)
+        ls = lf - pd.Timedelta(days=duration - 1) if duration > 0 else lf
+        LF_map[a] = lf
+        LS_map[a] = ls
 
-            # LF (predecessor) = LS (successor) - 1 day
-            # reflection of: ES (successor) = EF (predecessor) + 1 day
-            lf = min_succ_ls - pd.Timedelta(days=1) if pd.notna(min_succ_ls) else project_finish
+    # Build result DataFrame (with datetimes)
+    df_result = df.copy()
+    df_result['ES'] = df_result['Activity'].map(ES_map)
+    df_result['EF'] = df_result['Activity'].map(EF_map)
+    df_result['LS'] = df_result['Activity'].map(LS_map)
+    df_result['LF'] = df_result['Activity'].map(LF_map)
 
-        df.at[idx, 'LF'] = lf
+    # Slack and status
+    df_result['Slack (Days)'] = (df_result['LF'] - df_result['EF']).dt.days
+    df_result['Status'] = df_result['Slack (Days)'].apply(lambda x: 'Critical' if x == 0 else 'Non-Critical')
+    critical_path = df_result[df_result['Status'] == 'Critical']['Activity'].tolist()
 
-        # LS = LF - Duration - 1 day
-        # reflection of: EF = ES + Duration - 1 day
-        df.at[idx, 'LS'] = lf - pd.Timedelta(days=int(df.at[idx, 'Duration (Days)']) - 1)
-
-    # Slack and Critical Path
-    df['Slack (Days)'] = (df['LF'] - df['EF']).dt.days
-    df['Status'] = df['Slack (Days)'].apply(lambda x: 'Critical' if x == 0 else 'Non-Critical')
-    critical_path = df[df['Status'] == 'Critical']['Activity'].tolist()
-
-    # Display formatting
-    df_display = df.copy()
+    # Display formatting (string dates)
+    df_display = df_result.copy()
     for col in ['ES', 'EF', 'LS', 'LF']:
-        df_display[col] = df_display[col].dt.strftime('%Y-%m-%d')
+        df_display[col] = pd.to_datetime(df_display[col]).dt.strftime('%Y-%m-%d')
     df_display['Dependencies'] = df_display['Dependencies'].apply(lambda x: ', '.join(x))
 
-    return df_display, critical_path, df
+    return df_display, critical_path, df_result
 
 def create_pert_chart(df, critical_path):
     dot = graphviz.Digraph(format="png")
