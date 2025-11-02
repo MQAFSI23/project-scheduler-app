@@ -28,9 +28,10 @@ def calculate_cpm(df, start_date):
     """Compute CPM using explicit topological sort (Kahn). Returns:
         (df_display, critical_path, df_with_datetimes)
     """
-    # Ensure numeric duration
+    # Ensure inputs
     df = df.copy()
-    df['Duration (Days)'] = pd.to_numeric(df['Duration (Days)'], errors='coerce').fillna(0).astype(int)
+    df['Duration (Days)'] = pd.to_numeric(df['Duration (Days)'].fillna(1), errors='coerce').astype(int)
+    df['Dependencies'] = df['Dependencies'].fillna('')
 
     # Normalize Activity names (strip) and Dependencies into lists (strip each)
     df['Activity'] = df['Activity'].astype(str).str.strip()
@@ -208,94 +209,74 @@ col_editor, col_controls = st.columns([3, 1])
 
 with col_editor:
     st.info("Use the table below to add, edit, or delete tasks. Add new rows at the bottom.")
-    table_key = f"data_editor_{hash(str(st.session_state.tasks_df.to_json()))}"
     
     edited_df = st.data_editor(
         st.session_state.tasks_df,
         num_rows="dynamic",
         width="stretch",
-        key=table_key,
+        key="data_editor_main",
         column_config={
             "Activity": st.column_config.TextColumn(required=True),
-            "Duration (Days)": st.column_config.NumberColumn(min_value=0, step=1, required=True),
+            "Duration (Days)": st.column_config.NumberColumn(min_value=1, step=1, required=True),
             "Dependencies": st.column_config.TextColumn(help="Separate multiple dependencies with commas (e.g., A, B)")
         }
     )
 
-    if not edited_df.equals(st.session_state.tasks_df):
-        st.session_state.tasks_df = edited_df.copy()
+    st.session_state.tasks_df = edited_df.copy()
 
 with col_controls:
     start_date = st.date_input("Project Start Date", value=datetime.today())
     st.markdown("---")
 
-    # if 'temp_file_path' not in st.session_state:
-    #     st.session_state.temp_file_path = None
-
+    uploader_key = "file_uploader" if not st.session_state.get("reset_uploader") else "file_uploader_reset"
     uploaded_file = st.file_uploader(
         "Import from CSV",
         type="csv",
-        key="file_uploader" if not st.session_state.get("reset_uploader") else "file_uploader_reset"
+        key=uploader_key
     )
 
-    if uploaded_file is not None:
+    if uploaded_file is not None and not st.session_state.get("csv_imported", False):
         try:
-            # Clean up old temporary file if it exists
-            # if st.session_state.temp_file_path and os.path.exists(st.session_state.temp_file_path):
-            #     os.remove(st.session_state.temp_file_path)
-
-            # with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp_file:
-            #     tmp_file.write(uploaded_file.getbuffer())
-            #     st.session_state.temp_file_path = tmp_file.name
-
-            # imported_df = pd.read_csv(st.session_state.temp_file_path)
             imported_df = pd.read_csv(uploaded_file)
             required_cols = ['Activity', 'Duration (Days)', 'Dependencies']
 
-            if list(imported_df.columns) != required_cols:
-                st.error(
-                    f"Invalid CSV format. The file must have exactly these 3 columns in order: "
-                    f"{', '.join(required_cols)}.\n\n"
-                    f"Uploaded columns: {', '.join(imported_df.columns)}"
-                )
+            if not all(col in imported_df.columns for col in required_cols):
+                st.error(f"Invalid CSV. Missing required columns: {set(required_cols) - set(imported_df.columns)}")
             else:
+                imported_df = imported_df[required_cols]
                 st.session_state.tasks_df = imported_df.copy()
-                st.success(f"CSV imported successfully.")
+                st.success("CSV imported successfully.")
 
+                st.session_state["csv_imported"] = True
                 st.session_state["reset_uploader"] = False
+
+                for key in ['processed_df', 'critical_path', 'gantt_fig']:
+                    if key in st.session_state:
+                        del st.session_state[key]
+
+                st.rerun()
 
         except Exception as e:
             st.error(f"File read error: {e}")
         
     if st.button("🗑️ Clear All Data", type="secondary", width="stretch"):
-        # if st.session_state.temp_file_path and os.path.exists(st.session_state.temp_file_path):
-        #     os.remove(st.session_state.temp_file_path)
-        #     st.session_state.temp_file_path = None
-
         st.session_state.tasks_df = pd.DataFrame(columns=["Activity", "Duration (Days)", "Dependencies"])
-        for key in ['processed_df', 'critical_path', 'gantt_fig']:
+        for key in ['processed_df', 'critical_path', 'gantt_fig', 'csv_imported']:
             if key in st.session_state:
                 del st.session_state[key]
         
         st.session_state["reset_uploader"] = True
+
         st.rerun()
 
 st.markdown("---")
 
 if st.button("Run Schedule Analysis", type="primary", width="stretch", help="Click to calculate the Critical Path Method (CPM) and generate the PERT and Gantt Chart"):
-    # if not edited_df.equals(st.session_state.tasks_df):
-    #     st.session_state.tasks_df = edited_df.copy()
-
     if st.session_state.tasks_df.empty or st.session_state.tasks_df['Activity'].isnull().all():
         st.warning("No task data found. Please enter some tasks first.")
     else:
         df = st.session_state.tasks_df.copy()
-        # st.info(f"Using data from: {'uploaded file' if st.session_state.temp_file_path else 'manual input'}")
-
         df = df.dropna(subset=['Activity'])
-        df = df[df['Activity'].str.strip() != '']
-        df['Duration (Days)'] = pd.to_numeric(df['Duration (Days)'], errors='coerce').fillna(0)
-        df['Dependencies'] = df['Dependencies'].fillna('')
 
         with st.spinner("Calculating project schedule..."):
             processed_df, critical_path, gantt_df = calculate_cpm(df, start_date)
