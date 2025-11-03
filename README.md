@@ -1,6 +1,6 @@
 # Project Scheduler App
 
-**Project Scheduler App** adalah aplikasi berbasis **Streamlit** yang digunakan untuk menghitung dan memvisualisasikan **Critical Path Method (CPM)** dari suatu proyek.
+**Project Scheduler App** adalah aplikasi berbasis **Streamlit** atau **Gradio** yang digunakan untuk menghitung dan memvisualisasikan **Critical Path Method (CPM)** dari suatu proyek.
 Aplikasi ini dapat menampilkan hasil dalam bentuk **tabel CPM**, **diagram PERT**, dan **Gantt Chart**, lengkap dengan kemampuan **import/export CSV**.
 
 ---
@@ -95,16 +95,24 @@ sudo apt install graphviz
 
 ## Menjalankan Aplikasi
 
-Setelah semua dependensi terinstal, jalankan aplikasi Streamlit dengan perintah berikut:
+Setelah semua dependensi ter-install, jalankan aplikasi dengan perintah berikut:
 
 ```bash
 streamlit run app.py
 ```
-
-Kemudian buka browser dan akses:
-
+atau
+```bash
+gradio app_gradio.py
 ```
-http://localhost:8501
+
+Kemudian buka browser dan akses di:
+
+```bash
+http://localhost:8501 (Streamlit)
+```
+atau
+```bash
+http://127.0.0.1:7860 (Gradio)
 ```
 
 ---
@@ -143,19 +151,15 @@ Setelah menjalankan analisis, aplikasi akan menampilkan:
 
 ---
 
-## Contoh Hasil
+## Contoh Hasil (Streamlit)
 
 **1. CPM Results Table**
 
 ![CPM Results Table](screenshots/cpm-table.png)
 
-Menampilkan hasil perhitungan CPM secara lengkap dalam tabel, yang dapat diunduh sebagai CSV.
-
 **2. PERT Chart**
 
 ![PERT Chart](screenshots/pert-chart.png)
-
-Menampilkan diagram jaringan proyek.
 
 * Garis **merah** = jalur kritis
 * Garis **biru** = jalur non-kritis
@@ -164,4 +168,21 @@ Menampilkan diagram jaringan proyek.
 
 ![Gantt Chart](screenshots/gantt-chart.png)
 
-Visualisasi interaktif dengan Plotly yang menunjukkan urutan aktivitas berdasarkan waktu mulai dan selesai.
+---
+
+## Contoh Hasil (Gradio)
+
+**1. CPM Results Table**
+
+![CPM Results Table](screenshots/cpm_gradio.png)
+
+**2. PERT Chart**
+
+![PERT Chart](screenshots/pert_gradio.png)
+
+* Garis **merah** = jalur kritis
+* Garis **biru** = jalur non-kritis
+
+**3. Gantt Chart**
+
+![Gantt Chart](screenshots/gantt_gradio.png)
